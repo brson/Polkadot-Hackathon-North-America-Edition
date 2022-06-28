@@ -55,6 +55,8 @@ More:
 - Rust doesn't panic on overflow for primitive types by default in release mode,
   but this can and probably should be turned on for smart contracts by setting
   `overflow-checks = true` in the `[profile.dev]` section of the manifest.
+- [PSP-22] is the Polkadot token standard, and the easiest way to implement
+  it in Ink is to use [OpenBrush], a library of standard interfaces for Ink.
 
 [`ethereum_types`]: https://docs.rs/ethereum_types
 
@@ -419,3 +421,30 @@ Tailwind is a pure productivity booster.
 It's as fun as people say.
 
 I am having fun doing frontend development.
+
+
+## Deploying our UniswapV2Factory contract to a devnet (2022/06/28)
+
+Aimee has been learning how to create [PSP-22] tokens using [OpenBrush].
+
+While there's a fair bit of ink example code that implements "ERC-20" tokens,
+ERC-20 is not a Polkadot standard.
+The Polkadot standard is PSP-22,
+and it is similar but different to ERC-20.
+
+Uniswap's `UniswapV2Pair` represents a single pool of two tokens,
+and is itself a token.
+
+While she has been figuring that out I have merged Kris's
+code for `UniswapV2Factory`,
+and writing more UI code.
+It looks good enough for a prototype.
+
+My next task is to learn how to deploy our factory contract
+to a devnet,
+integrate [`polkadot.js`] into our frontend,
+and call some method on the contract.
+
+I gather that [`substrate-contracts-node`]
+is the best way to get a working local devnet,
+so I am building that now.
