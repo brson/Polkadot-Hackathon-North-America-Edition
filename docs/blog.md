@@ -57,6 +57,10 @@ More:
   `overflow-checks = true` in the `[profile.dev]` section of the manifest.
 - [PSP-22] is the Polkadot token standard, and the easiest way to implement
   it in Ink is to use [OpenBrush], a library of standard interfaces for Ink.
+- The `substrate-contracts-node` dev node implements a special consensus algorithm where
+  it doesn't continuously produce blocks, but when it processes a transaction,
+  it immediately produces a block. This is super convenient for development.
+  On some other chains the dev node burns CPU and takes a long time to produce blocks.
 
 [`ethereum_types`]: https://docs.rs/ethereum_types
 
@@ -448,3 +452,200 @@ and call some method on the contract.
 I gather that [`substrate-contracts-node`]
 is the best way to get a working local devnet,
 so I am building that now.
+
+
+## Deploying to `substrate-contracts-node` part 2 (2022/06/29)
+
+I run `substrate-contracts-node --dev`
+and can open `https://contracts-ui.substrate.io/`
+and connect to it.
+I remember this from last time I tried Ink.
+
+I can upload and instantiate a contract using this web UI,
+but I'm a developer and like to know how to do things from the command line
+in a way that can automated.
+
+`cargo contract upload` takes a `--suri` argument and I don't know what it is,
+but I will guess it stands for ... "service URI" and ... actually I can
+just write `cargo contract upload --help` to find out.
+It is a "secret key URI".
+Well that's a surprise.
+I don't have a guess what this is for.
+I have to google "cargo contract upload suri".
+
+And the first entry is [my own previous blog post][pbp].
+That's kinda helpful.
+I guess after _this_ blog post my SEO on this particular query will be through the roof.
+Aparently my "suri" should be "//Alice".
+At least for testing.
+
+[pbp]: https://brson.github.io/2020/12/03/substrate-and-ink-part-3
+
+This is the command I run:
+
+```
+$ cargo contract upload --suri //Alice --manifest-path=components/uniswap_v2_factory_contract/Cargo.toml
+        Event Balances ➜ Withdraw
+          who: 5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY
+          amount: 1872280472
+        Event Balances ➜ Reserved
+          who: 5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY
+          amount: 615375000000
+        Event Contracts ➜ CodeStored
+          code_hash: 0xd4113d0108f1f1c15dc85a2213415e1d657c1dfefb52f8d8b6a3d52ee21c77a2
+        Event TransactionPayment ➜ TransactionFeePaid
+          who: 5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY
+          actual_fee: 1872280472
+          tip: 0
+        Event System ➜ ExtrinsicSuccess
+          dispatch_info: DispatchInfo { weight: 1785953000, class: Normal, pays_fee: Yes }
+
+    Code hash 0xd4113d0108f1f1c15dc85a2213415e1d657c1dfefb52f8d8b6a3d52ee21c77a2
+```
+
+Now can I instantiate it?
+
+I see this:
+
+```
+$ cargo contract instantiate --suri //Alice --manifest-path=components/uniswap_v2_factory_contract/Cargo.toml
+ERROR: Module error: Contracts: ContractTrapped
+
+Contract trapped during execution.
+```
+
+I'm not sure if that's good or not.
+Maybe my constructor is busted in some way.
+
+When I browse the `contracts-ui` I can't find the contract I think I uploaded.
+The UI says "0 code bundles uploaded".
+I can't successfully search for it by the code hash.
+
+Well I can't figure out how to do this from the command line.
+I'll try to do it purely in the UI.
+
+I have a feeling this is what I did last year too &mdash; tried and failed to instantiate contracts
+on the command line, then resorted to the UI.
+
+When loading the contract in the UI I realize my constructor takes an argument:
+
+```rust
+#[ink(constructor)]
+pub fn new(fee_to_setter: AccountId) -> Self {
+     ink_lang::utils::initialize_contract(|this: &mut Self| this.new_init(fee_to_setter))
+}
+```
+
+Maybe this is why instantiation failed?
+I didn't specify that argument.
+The UI appears to want to set that argument to Alice's account id,
+which seems fine for now.
+
+On the command line I see that `cargo contract instantiate` has a `--args` argument.
+
+I successfully instantiate the contract in the UI,
+but I still really want to do it from the command line.
+I kill `substrate-contracts-node` and restart it.
+
+Now the `contracts-ui` web page is stuck connecting...
+
+It will connect if I open it in a new private window,
+but in my main window it is stuck.
+Clearing cookies doesn't help.
+I'll figure this out later...
+
+From the command line again.
+This time I call only `cargo contract instantiate`,
+thinking it will do the upload at the same time:
+
+```
+$ cargo contract instantiate --manifest-path=components/uniswap_v2_factory_contract/Cargo.toml --suri //Alice --args //Alice
+ERROR: Error parsing Value: Parsing Error: Stack { base: Alt([Base { location: "//Alice", kind: Kind(Tag) }, Base { location: "//Alice", kind: Kind(Tag) }, Base { location: "//Alice", kind: Expected(Char('[')) }, Base { location: "//Alice", kind: Expected(Char('(')) }, Base { location: "//Alice", kind: Kind(Tag) }, Base { location: "//Alice", kind: Kind(Tag) }, Base { location: "//Alice", kind: Kind(Tag) }, Base { location: "//Alice", kind: Expected(AlphaNumeric) }, Base { location: "//Alice", kind: External(ParseIntError { kind: Empty }) }, Base { location: "//Alice", kind: Kind(Tag) }, Base { location: "//Alice", kind: Kind(Tag) }, Base { location: "//Alice", kind: Expected(Char('\'')) }, Base { location: "//Alice", kind: Kind(Verify) }]), contexts: [("//Alice", Context("Value"))] }
+```
+
+Debug splat.
+
+I am guessing it doesn't like the "//Alice" argument.
+How do I get Alice's account ID?
+
+From some googling I think I want the `subkey` tool,
+which I don't have.
+Searches keep leading me to this ["getting started"][gsp] page,
+which seems to have changed recently and wants to to build
+[`substrate-node-template`][snt].
+
+[gsp]: https://docs.substrate.io/quick-start/
+[snt]: https://github.com/substrate-developer-hub/substrate-node-template
+
+So I guess I'll go build that in the background.
+But I don't think I really need to.
+`substrate-contracts-node` has the same `key` subcommand
+as `substrate-node-template`.
+
+I run
+
+```
+$ substrate-contracts-node key inspect //Alice
+Secret Key URI `//Alice` is account:
+  Network ID:        substrate
+ Secret seed:       0xe5be9a5092b81bca64be81d212e7f2f9eba183bb7a90954f7b76361f6edb5c0a
+  Public key (hex):  0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d
+  Account ID:        0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d
+  Public key (SS58): 5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY
+  SS58 Address:      5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY
+```
+
+There's Alice's pubkey.
+
+I try again to upload and instantiate in a single command,
+explicitly using Alice's pubkey,
+not her alias:
+
+```
+$ cargo contract instantiate --manifest-path=components/uniswap_v2_factory_contract/Cargo.toml --suri //Alice --args 0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d
+        Event Balances ➜ Withdraw
+          who: 5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY
+          amount: 54740330517
+        Event System ➜ NewAccount
+          account: 5CeF8uAajsRiwGF6zCyyYTgJmT9orDKYbm1FhDmXbssSwEZF
+        Event Balances ➜ Endowed
+          account: 5CeF8uAajsRiwGF6zCyyYTgJmT9orDKYbm1FhDmXbssSwEZF
+          free_balance: 100405000000
+        Event Balances ➜ Transfer
+          from: 5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY
+          to: 5CeF8uAajsRiwGF6zCyyYTgJmT9orDKYbm1FhDmXbssSwEZF
+          amount: 100405000000
+        Event Balances ➜ Reserved
+          who: 5CeF8uAajsRiwGF6zCyyYTgJmT9orDKYbm1FhDmXbssSwEZF
+          amount: 100405000000
+        Event Balances ➜ Reserved
+          who: 5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY
+          amount: 615375000000
+        Event Contracts ➜ CodeStored
+          code_hash: 0xd4113d0108f1f1c15dc85a2213415e1d657c1dfefb52f8d8b6a3d52ee21c77a2
+        Event Contracts ➜ Instantiated
+          deployer: 5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY
+          contract: 5CeF8uAajsRiwGF6zCyyYTgJmT9orDKYbm1FhDmXbssSwEZF
+        Event Balances ➜ Transfer
+          from: 5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY
+          to: 5CeF8uAajsRiwGF6zCyyYTgJmT9orDKYbm1FhDmXbssSwEZF
+          amount: 300325000000
+        Event Balances ➜ Reserved
+          who: 5CeF8uAajsRiwGF6zCyyYTgJmT9orDKYbm1FhDmXbssSwEZF
+          amount: 300325000000
+        Event Balances ➜ Deposit
+          who: 5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY
+          amount: 49519841454
+        Event TransactionPayment ➜ TransactionFeePaid
+          who: 5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY
+          actual_fee: 5220489063
+          tip: 0
+        Event System ➜ ExtrinsicSuccess
+          dispatch_info: DispatchInfo { weight: 5134161546, class: Normal, pays_fee: Yes }
+
+    Code hash 0xd4113d0108f1f1c15dc85a2213415e1d657c1dfefb52f8d8b6a3d52ee21c77a2
+     Contract 5CeF8uAajsRiwGF6zCyyYTgJmT9orDKYbm1FhDmXbssSwEZF
+```
+
+Ok, that feels good.
+Works as expected.
