@@ -61,6 +61,12 @@ More:
   it doesn't continuously produce blocks, but when it processes a transaction,
   it immediately produces a block. This is super convenient for development.
   On some other chains the dev node burns CPU and takes a long time to produce blocks.
+- The `subkey` tool refered to in old docs doesn't seem to exist now.
+  Instead the substrate node itself, like `substrate-contracts-node` has a `key`
+  subcommand.
+- `cargo-contract instantiate --manifest-path=<...> --suri=<...>` will upload
+  and instantiate a contract in a single command. No need to call
+  `cargo-contract upload`.
 
 [`ethereum_types`]: https://docs.rs/ethereum_types
 
@@ -649,3 +655,7 @@ $ cargo contract instantiate --manifest-path=components/uniswap_v2_factory_contr
 
 Ok, that feels good.
 Works as expected.
+
+The `contracts-ui` app is working again,
+and it shows my instantiated contract.
+
